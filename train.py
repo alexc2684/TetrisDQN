@@ -25,6 +25,7 @@ import torchvision.transforms as T
 from DQN import DQN
 from ReplayMemory import ReplayMemory
 
+Tensor = FloatTensor
 Transition = namedtuple('Transition', ('state', 'action', 'next_state', 'reward'))
 
 BATCH_SIZE = 50
@@ -110,13 +111,14 @@ def serverPython():
     while(True):
         time.sleep(50/1000.0);
         global featureString
-        featureString = client_socket.recv(2048).decode('utf-8')
+        featureString = client_socket.recv(2048).decode('utf-8')[:-3]
+
         #print(featureString)
 
 def clientPython():
 
     while(True):
-        test=1
+        test=15
         #test = raw_input('send here ')
         #if(test=="q"):
             #sys.exit()
@@ -136,6 +138,7 @@ def parseStream(stream):
     done = Tensor(stream[0])
     reward = Tensor(stream[1])
     state = Tensor(stream[2:len(stream)-1]) #TODO: make matrix/check dims
+    print(state.element_size())
     counter = stream[len(stream)-1]
     return done, state, reward, counter
 
@@ -146,7 +149,6 @@ def train(num_episodes):
     thread2 = Thread(target = clientPython, args = ())
     thread.start()
     thread2.start()
-    print("Feature String is:" + featureString +".")
     while not featureString:
         print(featureString)
         time.sleep(1)
@@ -158,14 +160,14 @@ def train(num_episodes):
         counter = 0
         last = torch.zeros((214, 1))
         curr = torch.zeros((214, 1))
-        curr_state = curr - last
+        curr_state =  curr - last
         while not done:
             action = select_action(curr_state)
             #TODO: map outputs to strings, to socket
-            done, curr, reward, counter = parseStream(featureString)
             last = curr
+            done, curr, reward, counter = parseStream(featureString)
             if not done:
-                next_state= [a_i - b_i for a_i, b_i in zip(curr, last)]
+                next_state = curr - last
                 #next_state = curr - last
             else:
                 next_state = None
