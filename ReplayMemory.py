@@ -1,4 +1,5 @@
 import random
+from collections import namedtuple
 
 class ReplayMemory(object):
 

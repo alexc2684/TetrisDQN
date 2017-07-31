@@ -3,11 +3,17 @@ import math
 import random
 import numpy as np
 import matplotlib
+import socket
+import time
+import sys
+from threading import Thread
+from time import sleep
 import matplotlib.pyplot as plt
 from collections import namedtuple
 from itertools import count
 from copy import deepcopy
 from PIL import Image
+
 
 import torch
 import torch.nn as nn
@@ -41,7 +47,7 @@ def select_action(state):
         return model(
             Variable(state, volatile=True).type(FloatTensor)).data.max(1)[1].view(1, 1)
     else:
-        return LongTensor([[random.randrange(2)]])
+        return LongTensor([[random.randrange(7)]])
 
 episode_durations = []
 
@@ -95,18 +101,95 @@ def optimize_model():
         param.grad.data.clamp_(-1, 1)
     optimizer.step()
 
+featureString = ""
+
+def serverPython():
+
+    while(True):
+        featureString = client_socket.recv(2048).decode('utf-8')
+        if(featureString==''):
+            sys.exit()
+
+def clientPython():
+
+    while(True):
+
+        #test = raw_input('send here ')
+        if(test=="q"):
+            sys.exit()
+        test=test + '\n'
+        bytesTest=test.encode('utf-8')
+        #client_socket.sendall(bytesTest)
+        #print ('you sent : ' , test)
+
+
+def initSocket():
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client_socket.connect(("", 5000))
+    thread = Thread(target = serverPython, args = ())
+    thread2 = Thread(target = clientPython, args = ())
+    thread.start()
+    thread2.start()
+    thread2.join()
+    thread.join()
+
 def parseStream(stream):
+    stream = stream.split(',')
+    stream = list(map(int, stream))
     done = Tensor(stream[0])
-    reward = stream[1]
-    state = torch.Tensor(stream[2:len(stream)])
-    return state, reward, active
+    reward = Tensor(stream[1])
+    state = torch.Tensor(stream[2:len(stream)-1])
+    time = stream[len(stream)-1]
+    return done, state, reward, time
 
 def train(num_episodes):
+    initSocket()
+    while featureString != '':
+        time.sleep(1)
+    for i in range(num_episodes):
+        print(featureString)
+        done, state, reward, time = parseStream(featureString)
+        #wait for game to start
+        #TODO: have socket send when it is connected
+        time = 0
+        last = torch.zeros((214, 1))
+        curr = torch.zeros((214, 1))
+        curr_state = curr - last
+        while not done:
+            action = select_action(curr_state)
+            #TODO: map outputs to strings, to socket
+            print()
+            done, curr, reward, time = parseStream(featureString)
+            last = curr
+            if not done:
+                next_state = curr - last
+            else:
+                next_state = None
+
+            memory.push(curr_state, action, next_state, reward)
+
+            curr_state = next_state
+            optimize_model()
+            if done:
+                episode_durations.append(reward)
+                plot_durations()
+                break
+
+    print("OPTIMIZED")
+    plt.ioff()
+    plt.show()
+
+if __name__ == "__main__":
+    train(1)
+
+
+
+
     #read socket
     #wait for signal to init
     #while init signal is True
     #feed byte stream into helper method
-    state, reward, done = #helper converter to (201, 1) Tensor   
+    # state, reward, done = #helper converter to (201, 1) Tensor
     #observe new state as difference between curr and old
     #push to replay memory
     #OPTIMIZE

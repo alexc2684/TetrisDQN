@@ -1,11 +1,11 @@
-import pytorch
+import torch
 from torch import nn
 import torch.nn.functional as F
 
 class DQN(nn.Module):
     def __init__(self):
         super(DQN, self).__init__()
-        self.hidden = nn.Linear(201, 100)
+        self.hidden = nn.Linear(214, 100)
         self.fc = nn.Linear(100, 7)
 
     def forward(self, x):
