@@ -16,6 +16,7 @@ from PIL import Image
 
 
 import torch
+from torch import Tensor, LongTensor, FloatTensor
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
@@ -31,7 +32,7 @@ GAMMA = 0.999
 EPS_START = 0.9
 EPS_END = 0.05
 EPS_DECAY = 200
-
+steps_done = 0
 model = DQN()
 
 optimizer = optim.RMSprop(model.parameters())
@@ -102,67 +103,70 @@ def optimize_model():
     optimizer.step()
 
 featureString = ""
+client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 def serverPython():
 
     while(True):
+        time.sleep(50/1000.0);
+        global featureString
         featureString = client_socket.recv(2048).decode('utf-8')
-        if(featureString==''):
-            sys.exit()
+        #print(featureString)
 
 def clientPython():
 
     while(True):
-
+        test=1
         #test = raw_input('send here ')
-        if(test=="q"):
-            sys.exit()
-        test=test + '\n'
-        bytesTest=test.encode('utf-8')
+        #if(test=="q"):
+            #sys.exit()
+        #test=test + '\n'
+        #bytesTest=test.encode('utf-8')
         #client_socket.sendall(bytesTest)
         #print ('you sent : ' , test)
 
 
-def initSocket():
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client_socket.connect(("", 5000))
-    thread = Thread(target = serverPython, args = ())
-    thread2 = Thread(target = clientPython, args = ())
-    thread.start()
-    thread2.start()
-    thread2.join()
-    thread.join()
+#def initSocket():
+
+
 
 def parseStream(stream):
     stream = stream.split(',')
     stream = list(map(int, stream))
     done = Tensor(stream[0])
     reward = Tensor(stream[1])
-    state = torch.Tensor(stream[2:len(stream)-1])
-    time = stream[len(stream)-1]
-    return done, state, reward, time
+    state = Tensor(stream[2:len(stream)-1]) #TODO: make matrix/check dims
+    counter = stream[len(stream)-1]
+    return done, state, reward, counter
 
 def train(num_episodes):
-    initSocket()
-    while featureString != '':
+    global featureString
+    client_socket.connect(("", 5000))
+    thread = Thread(target = serverPython, args = ())
+    thread2 = Thread(target = clientPython, args = ())
+    thread.start()
+    thread2.start()
+    print("Feature String is:" + featureString +".")
+    while not featureString:
+        print(featureString)
         time.sleep(1)
     for i in range(num_episodes):
         print(featureString)
-        done, state, reward, time = parseStream(featureString)
+        done, state, reward, counter = parseStream(featureString)
         #wait for game to start
         #TODO: have socket send when it is connected
-        time = 0
+        counter = 0
         last = torch.zeros((214, 1))
         curr = torch.zeros((214, 1))
         curr_state = curr - last
         while not done:
             action = select_action(curr_state)
             #TODO: map outputs to strings, to socket
-            print()
-            done, curr, reward, time = parseStream(featureString)
+            done, curr, reward, counter = parseStream(featureString)
             last = curr
             if not done:
-                next_state = curr - last
+                next_state= [a_i - b_i for a_i, b_i in zip(curr, last)]
+                #next_state = curr - last
             else:
                 next_state = None
 
@@ -178,6 +182,8 @@ def train(num_episodes):
     print("OPTIMIZED")
     plt.ioff()
     plt.show()
+    thread.join()
+    thread2.join()
 
 if __name__ == "__main__":
     train(1)
