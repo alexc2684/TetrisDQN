@@ -16,7 +16,7 @@ from PIL import Image
 
 
 import torch
-from torch import Tensor, LongTensor, FloatTensor
+from torch import Tensor, LongTensor, FloatTensor, ByteTensor
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
@@ -28,7 +28,7 @@ from ReplayMemory import ReplayMemory
 Tensor = FloatTensor
 Transition = namedtuple('Transition', ('state', 'action', 'next_state', 'reward'))
 
-BATCH_SIZE = 50
+BATCH_SIZE = 20
 GAMMA = 0.999
 EPS_START = 0.9
 EPS_END = 0.05
@@ -83,112 +83,136 @@ def optimize_model():
     non_final_next_states = Variable(torch.cat([s for s in batch.next_state
                                                 if s is not None]),
                                      volatile=True)
+
+
     state_batch = Variable(torch.cat(batch.state))
     action_batch = Variable(torch.cat(batch.action))
     reward_batch = Variable(torch.cat(batch.reward))
-
-    state_action_values = model(state_batch).gather(1, action_batch)
+    temp=model(state_batch)
+    state_action_values = temp.gather(1, action_batch.view(-1,1))
 
     next_state_values = Variable(torch.zeros(BATCH_SIZE).type(Tensor))
+
     next_state_values[non_final_mask] = model(non_final_next_states).max(1)[0]
 
     next_state_values.volatile = False
     expected_state_action_values = (next_state_values * GAMMA) + reward_batch
+    print("Loss")
 
     loss = F.smooth_l1_loss(state_action_values, expected_state_action_values)
-
+    print(loss)
+    #print("Loss " + loss)
     optimizer.zero_grad()
     loss.backward()
     for param in model.parameters():
         param.grad.data.clamp_(-1, 1)
     optimizer.step()
 
-featureString = ""
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-def serverPython():
-
-    while(True):
-        time.sleep(50/1000.0);
-        global featureString
-        featureString = client_socket.recv(2048).decode('utf-8')[:-3]
-
-        #print(featureString)
-
-def clientPython():
-
-    while(True):
-        test=15
-        #test = raw_input('send here ')
-        #if(test=="q"):
-            #sys.exit()
-        #test=test + '\n'
-        #bytesTest=test.encode('utf-8')
-        #client_socket.sendall(bytesTest)
-        #print ('you sent : ' , test)
-
-
-#def initSocket():
 
 
 
 def parseStream(stream):
+    stream = stream[:stream.find('\\')]
     stream = stream.split(',')
+    stream = stream[:216]
+    #print(stream)
+    #print(len(stream))
     stream = list(map(int, stream))
-    done = Tensor(stream[0])
-    reward = Tensor(stream[1])
-    state = Tensor(stream[2:len(stream)-1]) #TODO: make matrix/check dims
-    print(state.element_size())
+    done = stream[0]
+    #print(stream[1])
+    reward = LongTensor([stream[1]])
+    state = np.array(stream[2:len(stream)-1]) #TODO: make matrix/check dims
+    state = np.reshape(state, (1, 213))
+    state = torch.from_numpy(state)
+    #print("curr state type:")
+    #print(type(state))
     counter = stream[len(stream)-1]
+
     return done, state, reward, counter
 
+def translateAction(n):
+    if n == 0:
+        return "left"
+    elif n == 1:
+        return "right"
+    elif n == 2:
+        return "up"
+    elif n == 3:
+        return "down"
+    elif n == 4:
+        return "shift"
+    elif n == 5:
+        return "space"
+    elif n == 6:
+        return "z"
+
+
+def sendText(text):
+    text=text + '\n'
+    bytesTest=text.encode('utf-8')
+    client_socket.sendall(bytesTest)
+
+def receiveNextFeatureString():
+    featureString=""
+    while not featureString: #or len(featureString)<400:
+        featureString = client_socket.recv(2048).decode('utf-8')
+        sendText("received")
+    return featureString
 def train(num_episodes):
-    global featureString
     client_socket.connect(("", 5000))
-    thread = Thread(target = serverPython, args = ())
-    thread2 = Thread(target = clientPython, args = ())
-    thread.start()
-    thread2.start()
-    while not featureString:
-        print(featureString)
-        time.sleep(1)
+    #featureString = client_socket.recv(2048).decode('utf-8')
+    featureString=""
     for i in range(num_episodes):
-        print(featureString)
+        # #
+        featureString=receiveNextFeatureString()
         done, state, reward, counter = parseStream(featureString)
         #wait for game to start
         #TODO: have socket send when it is connected
         counter = 0
-        last = torch.zeros((214, 1))
-        curr = torch.zeros((214, 1))
+        last = torch.zeros((1, 213)).long()
+        curr = torch.zeros((1, 213)).long()
         curr_state =  curr - last
+        curr_state = curr_state.long()
         while not done:
-            action = select_action(curr_state)
+            action = select_action(curr_state)[0][0]
+            actionText = translateAction(action)
+
+            sendText(actionText)
             #TODO: map outputs to strings, to socket
             last = curr
+            featureString=receiveNextFeatureString()
             done, curr, reward, counter = parseStream(featureString)
             if not done:
                 next_state = curr - last
-                #next_state = curr - last
+                next_state = next_state.float()
             else:
                 next_state = None
+            curr_state=curr_state.long()
 
-            memory.push(curr_state, action, next_state, reward)
+            action=Tensor([action]).long()
+            #print(action.size())
+            memory.push(curr_state.float(), action, next_state, reward.float())
 
             curr_state = next_state
             optimize_model()
+
             if done:
                 episode_durations.append(reward)
-                plot_durations()
-                break
+                sendText("reset")
 
-    print("OPTIMIZED")
+                break
+        time.sleep(2)
+        featureString=receiveNextFeatureString()
+        sendText("received")
+
+    #print("OPTIMIZED")
     plt.ioff()
     plt.show()
-    thread.join()
-    thread2.join()
+
 
 if __name__ == "__main__":
-    train(1)
+    train(2)
 
 
 
