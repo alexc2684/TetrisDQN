@@ -30,7 +30,7 @@ Transition = namedtuple('Transition', ('state', 'action', 'next_state', 'reward'
 
 BATCH_SIZE = 150
 GAMMA = 0.999
-EPS_START = 0.95
+EPS_START = 0.9569
 EPS_END = 0.05
 #EPS_DECAY = 100
 MAX_STEPS=10000
