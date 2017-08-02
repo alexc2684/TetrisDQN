@@ -28,9 +28,9 @@ from ReplayMemory import ReplayMemory
 Tensor = FloatTensor
 Transition = namedtuple('Transition', ('state', 'action', 'next_state', 'reward'))
 
-BATCH_SIZE = 20
+BATCH_SIZE = 50
 GAMMA = 0.999
-EPS_START = 0.9
+EPS_START = 0.95
 EPS_END = 0.05
 EPS_DECAY = 200
 steps_done = 0
@@ -97,11 +97,9 @@ def optimize_model():
 
     next_state_values.volatile = False
     expected_state_action_values = (next_state_values * GAMMA) + reward_batch
-    print("Loss")
-
     loss = F.smooth_l1_loss(state_action_values, expected_state_action_values)
-    print(loss)
-    #print("Loss " + loss)
+    #print(loss)
+    #print("Loss: " + str((loss.data)[0]))
     optimizer.zero_grad()
     loss.backward()
     for param in model.parameters():
@@ -115,21 +113,20 @@ client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 def parseStream(stream):
     stream = stream[:stream.find('\\')]
     stream = stream.split(',')
-    stream = stream[:216]
+    stream = stream[:215]
     #print(stream)
     #print(len(stream))
     stream = list(map(int, stream))
     done = stream[0]
     #print(stream[1])
     reward = LongTensor([stream[1]])
-    state = np.array(stream[2:len(stream)-1]) #TODO: make matrix/check dims
+    state = np.array(stream[2:len(stream)]) #TODO: make matrix/check dims
     state = np.reshape(state, (1, 213))
     state = torch.from_numpy(state)
     #print("curr state type:")
     #print(type(state))
-    counter = stream[len(stream)-1]
 
-    return done, state, reward, counter
+    return done, state, reward
 
 def translateAction(n):
     if n == 0:
@@ -155,21 +152,22 @@ def sendText(text):
 
 def receiveNextFeatureString():
     featureString=""
-    while not featureString: #or len(featureString)<400:
+    featureString = client_socket.recv(2048).decode('utf-8')
+    while not featureString  : #or len(featureString)<400:
+        sendText("empty")
         featureString = client_socket.recv(2048).decode('utf-8')
-        sendText("received")
     return featureString
+
 def train(num_episodes):
     client_socket.connect(("", 5000))
     #featureString = client_socket.recv(2048).decode('utf-8')
     featureString=""
     for i in range(num_episodes):
         # #
+        print("Episode: " + str(i+1))
         featureString=receiveNextFeatureString()
-        done, state, reward, counter = parseStream(featureString)
-        #wait for game to start
-        #TODO: have socket send when it is connected
-        counter = 0
+        done, state, reward = parseStream(featureString)
+
         last = torch.zeros((1, 213)).long()
         curr = torch.zeros((1, 213)).long()
         curr_state =  curr - last
@@ -177,12 +175,11 @@ def train(num_episodes):
         while not done:
             action = select_action(curr_state)[0][0]
             actionText = translateAction(action)
-
             sendText(actionText)
             #TODO: map outputs to strings, to socket
             last = curr
             featureString=receiveNextFeatureString()
-            done, curr, reward, counter = parseStream(featureString)
+            done, curr, reward = parseStream(featureString)
             if not done:
                 next_state = curr - last
                 next_state = next_state.float()
@@ -200,19 +197,18 @@ def train(num_episodes):
             if done:
                 episode_durations.append(reward)
                 sendText("reset")
-
+                print("Score: "+ str(reward[0]))
                 break
-        time.sleep(2)
-        featureString=receiveNextFeatureString()
-        sendText("received")
+
+
 
     #print("OPTIMIZED")
     plt.ioff()
     plt.show()
-
+    sendText("end")
 
 if __name__ == "__main__":
-    train(2)
+    train(100)
 
 
 
