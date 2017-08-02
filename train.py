@@ -28,11 +28,12 @@ from ReplayMemory import ReplayMemory
 Tensor = FloatTensor
 Transition = namedtuple('Transition', ('state', 'action', 'next_state', 'reward'))
 
-BATCH_SIZE = 50
+BATCH_SIZE = 150
 GAMMA = 0.999
 EPS_START = 0.95
 EPS_END = 0.05
-EPS_DECAY = 200
+#EPS_DECAY = 100
+MAX_STEPS=10000
 steps_done = 0
 model = DQN()
 
@@ -42,8 +43,10 @@ memory = ReplayMemory(10000)
 def select_action(state):
     global steps_done
     sample = random.random()
-    eps_threshold = EPS_END + (EPS_START - EPS_END) * \
-        math.exp(-1. * steps_done / EPS_DECAY)
+
+    eps_threshold = max(EPS_END,EPS_END + (EPS_START - EPS_END)*(1-steps_done/MAX_STEPS))
+
+    #eps_threshold = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * steps_done / EPS_DECAY)
     steps_done += 1
     if sample > eps_threshold:
         return model(
@@ -99,7 +102,7 @@ def optimize_model():
     expected_state_action_values = (next_state_values * GAMMA) + reward_batch
     loss = F.smooth_l1_loss(state_action_values, expected_state_action_values)
     #print(loss)
-    #print("Loss: " + str((loss.data)[0]))
+    print("Loss: " + str(((loss.data)[0])/steps_done))
     optimizer.zero_grad()
     loss.backward()
     for param in model.parameters():
@@ -116,7 +119,10 @@ def parseStream(stream):
     stream = stream[:215]
     #print(stream)
     #print(len(stream))
-    stream = list(map(int, stream))
+    try:
+        stream = list(map(int, stream))
+    except Error:
+        print(Error)
     done = stream[0]
     #print(stream[1])
     reward = LongTensor([stream[1]])
