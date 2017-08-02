@@ -29,7 +29,7 @@ Tensor = FloatTensor
 Transition = namedtuple('Transition', ('state', 'action', 'next_state', 'reward'))
 
 BATCH_SIZE = 150
-GAMMA = 0.999
+GAMMA = 0.9990
 EPS_START = 0.95
 EPS_END = 0.05
 #EPS_DECAY = 100
