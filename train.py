@@ -29,7 +29,7 @@ Tensor = FloatTensor
 Transition = namedtuple('Transition', ('state', 'action', 'next_state', 'reward'))
 
 BATCH_SIZE = 150
-GAMMA = 0.9990
+GAMMA = 0.999
 EPS_START = 0.95
 EPS_END = 0.05
 #EPS_DECAY = 100
@@ -46,8 +46,6 @@ def select_action(state):
     sample = random.random()
 
     eps_threshold = max(EPS_END,EPS_END + (EPS_START - EPS_END)*(1-steps_done/(DECAY_RATE*MAX_STEPS)))
-    # print(eps_threshold)
-    #eps_threshold = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * steps_done / EPS_DECAY)
     steps_done += 1
     if sample > eps_threshold:
         return model(
@@ -190,7 +188,7 @@ def train(num_episodes):
     featureString=""
     for i in range(num_episodes):
         # #
-        print("Episode: " + str(i+1))
+        print("Episode: " + str(i+1)+" ", end="")
         featureString=receiveNextFeatureString()
         done, state, reward = parseStream(featureString)
 
@@ -234,7 +232,7 @@ def train(num_episodes):
     sendText("end")
 
 if __name__ == "__main__":
-    train(100)
+    train(200)
 
 
 

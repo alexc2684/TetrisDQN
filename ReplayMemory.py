@@ -11,8 +11,6 @@ class ReplayMemory(object):
     def push(self, *args):
         if len(self.memory) < self.capacity:
             self.memory.append(None)
-        #for count, thing in enumerate(args):
-            #print( '{0}. {1}'.format(count, thing))
         self.memory[self.position] = Transition(*args)
         self.position = (self.position + 1) % self.capacity
 
