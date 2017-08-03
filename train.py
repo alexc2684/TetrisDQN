@@ -33,7 +33,7 @@ GAMMA = 0.9990
 EPS_START = 0.95
 EPS_END = 0.05
 #EPS_DECAY = 100
-MAX_STEPS=10000
+MAX_STEPS= 10000
 steps_done = 0
 model = DQN()
 
@@ -44,15 +44,15 @@ def select_action(state):
     global steps_done
     sample = random.random()
 
-    eps_threshold = max(EPS_END,EPS_END + (EPS_START - EPS_END)*(1-steps_done/MAX_STEPS))
-
+    eps_threshold = max(EPS_END,EPS_END + (EPS_START - EPS_END)*(1-steps_done/(5*MAX_STEPS)))
+    # print(eps_threshold)
     #eps_threshold = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * steps_done / EPS_DECAY)
     steps_done += 1
     if sample > eps_threshold:
         return model(
             Variable(state, volatile=True).type(FloatTensor)).data.max(1)[1].view(1, 1)
     else:
-        return LongTensor([[random.randrange(7)]])
+        return LongTensor([[random.randrange(6)]])
 
 episode_durations = []
 
@@ -102,7 +102,7 @@ def optimize_model():
     expected_state_action_values = (next_state_values * GAMMA) + reward_batch
     loss = F.smooth_l1_loss(state_action_values, expected_state_action_values)
     #print(loss)
-    print("Loss: " + str(((loss.data)[0])/steps_done))
+    # print("Loss: " + str(((loss.data)[0])/steps_done))
     optimizer.zero_grad()
     loss.backward()
     for param in model.parameters():
@@ -114,6 +114,7 @@ client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 
 def parseStream(stream):
+    wholeStream=stream
     stream = stream[:stream.find('\\')]
     stream = stream.split(',')
     stream = stream[:215]
@@ -121,8 +122,9 @@ def parseStream(stream):
     #print(len(stream))
     try:
         stream = list(map(int, stream))
-    except Error:
-        print(Error)
+    except:
+        print(stream)
+        print(wholeStream)
     done = stream[0]
     #print(stream[1])
     reward = LongTensor([stream[1]])
@@ -144,11 +146,11 @@ def translateAction(n):
     elif n == 3:
         return "down"
     elif n == 4:
-        return "shift"
+        return "z"
     elif n == 5:
         return "space"
     elif n == 6:
-        return "z"
+        return "shift"
 
 
 def sendText(text):
