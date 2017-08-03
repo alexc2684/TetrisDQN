@@ -35,6 +35,7 @@ EPS_END = 0.05
 #EPS_DECAY = 100
 MAX_STEPS= 10000
 steps_done = 0
+DECAY_RATE = 3
 model = DQN()
 
 optimizer = optim.RMSprop(model.parameters())
@@ -44,7 +45,7 @@ def select_action(state):
     global steps_done
     sample = random.random()
 
-    eps_threshold = max(EPS_END,EPS_END + (EPS_START - EPS_END)*(1-steps_done/(5*MAX_STEPS)))
+    eps_threshold = max(EPS_END,EPS_END + (EPS_START - EPS_END)*(1-steps_done/(DECAY_RATE*MAX_STEPS)))
     # print(eps_threshold)
     #eps_threshold = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * steps_done / EPS_DECAY)
     steps_done += 1
@@ -114,10 +115,11 @@ client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 
 def parseStream(stream):
-    wholeStream=stream
+    wholeStream = stream
     stream = stream[:stream.find('\\')]
     stream = stream.split(',')
     stream = stream[:215]
+    length = len(stream)
     #print(stream)
     #print(len(stream))
     try:
@@ -128,13 +130,29 @@ def parseStream(stream):
     done = stream[0]
     #print(stream[1])
     reward = LongTensor([stream[1]])
+    board = np.array(stream[2:202])
+    board = board.reshape((20, 10)) #TODO: make sure it formats correctly
+    # board = np.flip(board, 0)
+    currPiece = np.array(stream[length-8:length])
+    i = 0
+    while i < len(currPiece):
+        y = currPiece[i] - 1
+        x = currPiece[i+1] - 1
+        if x < 10 and y < 20:
+            board[y, x] = 1
+        i += 2
+
+    # print(board)
+    board = np.expand_dims(board, axis=0)
+    board = torch.from_numpy(board)
+    board = board.unsqueeze(0).type(Tensor)
     state = np.array(stream[2:len(stream)]) #TODO: make matrix/check dims
+    # print(state)
     state = np.reshape(state, (1, 213))
     state = torch.from_numpy(state)
     #print("curr state type:")
     #print(type(state))
-
-    return done, state, reward
+    return done, board, reward
 
 def translateAction(n):
     if n == 0:
@@ -176,8 +194,8 @@ def train(num_episodes):
         featureString=receiveNextFeatureString()
         done, state, reward = parseStream(featureString)
 
-        last = torch.zeros((1, 213)).long()
-        curr = torch.zeros((1, 213)).long()
+        last = torch.zeros((1, 20, 10)).long().unsqueeze(0).type(Tensor)
+        curr = torch.zeros((1, 20, 10)).long().unsqueeze(0).type(Tensor)
         curr_state =  curr - last
         curr_state = curr_state.long()
         while not done:
