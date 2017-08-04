@@ -7,15 +7,14 @@ class DQN(nn.Module):
         super(DQN, self).__init__()
         self.conv1 = nn.Conv2d(1, 16, kernel_size=2, stride=1)
         self.bn1 = nn.BatchNorm2d(16)
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=2, stride=1)
-        self.bn2 = nn.BatchNorm2d(32)
-        self.conv3 = nn.Conv2d(32, 64, kernel_size=5, stride=2)
-        self.bn3 = nn.BatchNorm2d(64)
-        self.head = nn.Linear(2*448, 5)
-
+        self.fc1 = nn.Linear(2736, 2000)
+        self.fc2 = nn.Linear(2000, 1000)
+        self.fc3 = nn.Linear(1000, 200)
+        self.fc4 = nn.Linear(200, 6)
 
     def forward(self, x):
         x = F.relu(self.bn1(self.conv1(x)))
-        x = F.relu(self.bn2(self.conv2(x)))
-        x = F.relu(self.bn3(self.conv3(x)))
-        return self.head(x.view(x.size(0), -1))
+        x = self.fc1(x.view(x.size(0), -1))
+        x = self.fc2(x)
+        x = self.fc3(x)
+        return self.fc4(x)

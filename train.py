@@ -35,7 +35,7 @@ EPS_END = 0.05
 #EPS_DECAY = 100
 MAX_STEPS= 10000
 steps_done = 0
-DECAY_RATE = 4
+DECAY_RATE = 2
 model = DQN()
 
 optimizer = optim.RMSprop(model.parameters())
@@ -51,7 +51,7 @@ def select_action(state):
         return model(
             Variable(state, volatile=True).type(FloatTensor)).data.max(1)[1].view(1, 1)
     else:
-        return LongTensor([[random.randrange(5)]])
+        return LongTensor([[random.randrange(6)]])
 
 episode_durations = []
 
@@ -151,7 +151,7 @@ def parseStream(stream):
         return done, board, reward, True
     except:
         print("Error: Bad socket read")
-        return False, null, null, False
+        return False, 0, 0, False
 
 def translateAction(n):
     if n == 0:
@@ -215,7 +215,10 @@ def train(num_episodes):
 
                 action=Tensor([action]).long()
                 #print(action.size())
-                memory.push(curr_state.float(), action, next_state, reward.float())
+                if done:
+                    memory.push(curr_state.float(), action, next_state, LongTensor([-500]))
+                else:
+                    memory.push(curr_state.float(), action, next_state, reward.float())
 
                 curr_state = next_state
                 optimize_model()
