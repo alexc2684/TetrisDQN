@@ -35,7 +35,7 @@ EPS_END = 0.05
 #EPS_DECAY = 100
 MAX_STEPS= 10000
 steps_done = 0
-DECAY_RATE = 3
+DECAY_RATE = 4
 model = DQN()
 
 optimizer = optim.RMSprop(model.parameters())
@@ -51,7 +51,7 @@ def select_action(state):
         return model(
             Variable(state, volatile=True).type(FloatTensor)).data.max(1)[1].view(1, 1)
     else:
-        return LongTensor([[random.randrange(6)]])
+        return LongTensor([[random.randrange(5)]])
 
 episode_durations = []
 
@@ -122,35 +122,36 @@ def parseStream(stream):
     #print(len(stream))
     try:
         stream = list(map(int, stream))
-    except:
-        print(stream)
-        print(wholeStream)
-    done = stream[0]
-    #print(stream[1])
-    reward = LongTensor([stream[1]])
-    board = np.array(stream[2:202])
-    board = board.reshape((20, 10)) #TODO: make sure it formats correctly
-    # board = np.flip(board, 0)
-    currPiece = np.array(stream[length-8:length])
-    i = 0
-    while i < len(currPiece):
-        y = currPiece[i] - 1
-        x = currPiece[i+1] - 1
-        if x < 10 and y < 20:
-            board[y, x] = 1
-        i += 2
 
-    # print(board)
-    board = np.expand_dims(board, axis=0)
-    board = torch.from_numpy(board)
-    board = board.unsqueeze(0).type(Tensor)
-    state = np.array(stream[2:len(stream)]) #TODO: make matrix/check dims
-    # print(state)
-    state = np.reshape(state, (1, 213))
-    state = torch.from_numpy(state)
-    #print("curr state type:")
-    #print(type(state))
-    return done, board, reward
+        done = stream[0]
+        #print(stream[1])
+        reward = LongTensor([stream[1]])
+        board = np.array(stream[2:202])
+        board = board.reshape((20, 10)) #TODO: make sure it formats correctly
+        # board = np.flip(board, 0)
+        currPiece = np.array(stream[length-8:length])
+        i = 0
+        while i < len(currPiece):
+            y = currPiece[i] - 1
+            x = currPiece[i+1] - 1
+            if x < 10 and y < 20:
+                board[y, x] = 1
+            i += 2
+
+        # print(board)
+        board = np.expand_dims(board, axis=0)
+        board = torch.from_numpy(board)
+        board = board.unsqueeze(0).type(Tensor)
+        state = np.array(stream[2:len(stream)]) #TODO: make matrix/check dims
+        # print(state)
+        state = np.reshape(state, (1, 213))
+        state = torch.from_numpy(state)
+        #print("curr state type:")
+        #print(type(state))
+        return done, board, reward, True
+    except:
+        print("Error: Bad socket read")
+        return False, null, null, False
 
 def translateAction(n):
     if n == 0:
@@ -175,9 +176,9 @@ def sendText(text):
     client_socket.sendall(bytesTest)
 
 def receiveNextFeatureString():
-    featureString=""
+    featureString = ""
     featureString = client_socket.recv(2048).decode('utf-8')
-    while not featureString  : #or len(featureString)<400:
+    while not featureString: #or len(featureString)<400:
         sendText("empty")
         featureString = client_socket.recv(2048).decode('utf-8')
     return featureString
@@ -185,12 +186,12 @@ def receiveNextFeatureString():
 def train(num_episodes):
     client_socket.connect(("", 5000))
     #featureString = client_socket.recv(2048).decode('utf-8')
-    featureString=""
+    featureString = ""
     for i in range(num_episodes):
         # #
-        print("Episode: " + str(i+1)+" ", end="")
+        print("Episode: " + str(i+1) + " ", end = "")
         featureString=receiveNextFeatureString()
-        done, state, reward = parseStream(featureString)
+        done, state, reward, didRecieve = parseStream(featureString)
 
         last = torch.zeros((1, 20, 10)).long().unsqueeze(0).type(Tensor)
         curr = torch.zeros((1, 20, 10)).long().unsqueeze(0).type(Tensor)
@@ -202,21 +203,22 @@ def train(num_episodes):
             sendText(actionText)
             #TODO: map outputs to strings, to socket
             last = curr
-            featureString=receiveNextFeatureString()
-            done, curr, reward = parseStream(featureString)
-            if not done:
-                next_state = curr - last
-                next_state = next_state.float()
-            else:
-                next_state = None
-            curr_state=curr_state.long()
+            featureString = receiveNextFeatureString()
+            done, curr, reward, didRecieve = parseStream(featureString)
+            if didRecieve:
+                if not done:
+                    next_state = curr - last
+                    next_state = next_state.float()
+                else:
+                    next_state = None
+                curr_state=curr_state.long()
 
-            action=Tensor([action]).long()
-            #print(action.size())
-            memory.push(curr_state.float(), action, next_state, reward.float())
+                action=Tensor([action]).long()
+                #print(action.size())
+                memory.push(curr_state.float(), action, next_state, reward.float())
 
-            curr_state = next_state
-            optimize_model()
+                curr_state = next_state
+                optimize_model()
 
             if done:
                 episode_durations.append(reward)

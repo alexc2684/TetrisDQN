@@ -9,9 +9,9 @@ class DQN(nn.Module):
         self.bn1 = nn.BatchNorm2d(16)
         self.conv2 = nn.Conv2d(16, 32, kernel_size=2, stride=1)
         self.bn2 = nn.BatchNorm2d(32)
-        self.conv3 = nn.Conv2d(32, 32, kernel_size=5, stride=2)
-        self.bn3 = nn.BatchNorm2d(32)
-        self.head = nn.Linear(448, 6)
+        self.conv3 = nn.Conv2d(32, 64, kernel_size=5, stride=2)
+        self.bn3 = nn.BatchNorm2d(64)
+        self.head = nn.Linear(2*448, 5)
 
 
     def forward(self, x):
