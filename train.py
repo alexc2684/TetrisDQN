@@ -23,6 +23,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 import torchvision.transforms as T
 from DQN import DQN
+from queue import Queue
 from ReplayMemory import ReplayMemory
 
 Tensor = FloatTensor
@@ -40,18 +41,43 @@ model = DQN()
 
 optimizer = optim.RMSprop(model.parameters())
 memory = ReplayMemory(10000)
+moveQueue= Queue()
 
-def select_action(state):
-    global steps_done
-    sample = random.random()
-
-    eps_threshold = max(EPS_END,EPS_END + (EPS_START - EPS_END)*(1-steps_done/(DECAY_RATE*MAX_STEPS)))
+def select_action(state,board, piece,origin):
+    global steps_done,moveQueue
     steps_done += 1
+    if not moveQueue.isEmpty():
+        #time.sleep(0.1)
+        return LongTensor([[moveQueue.dequeue()]])
+    if steps_done<0:
+        s= input("Input move: ")
+        action = 0
+        if s=="a":
+             action=0
+        elif s=="d":
+             action=1
+        elif s=="w":
+             action=2
+        elif s==" ":
+             action=3
+        elif s=="z":
+             action=4
+
+        return LongTensor([[action]])
+
+    sample=random.random()
+    if sample<1:
+
+        moveQueue= determineOptimalMove(board,piece,origin)
+        #s=input("enter when ready")
+        return LongTensor([[moveQueue.dequeue()]])
+    eps_threshold = max(EPS_END,EPS_END + (EPS_START - EPS_END)*(1-steps_done/(DECAY_RATE*MAX_STEPS)))
+
     if sample > eps_threshold:
         return model(
             Variable(state, volatile=True).type(FloatTensor)).data.max(1)[1].view(1, 1)
     else:
-        return LongTensor([[random.randrange(6)]])
+        return LongTensor([[random.randrange(5)]])
 
 episode_durations = []
 
@@ -100,7 +126,7 @@ def optimize_model():
     next_state_values.volatile = False
     expected_state_action_values = (next_state_values * GAMMA) + reward_batch
     loss = F.smooth_l1_loss(state_action_values, expected_state_action_values)
-    #print(loss)
+
     # print("Loss: " + str(((loss.data)[0])/steps_done))
     optimizer.zero_grad()
     loss.backward()
@@ -116,42 +142,53 @@ def parseStream(stream):
     wholeStream = stream
     stream = stream[:stream.find('\\')]
     stream = stream.split(',')
+    stream = stream[:217]
+    length = len(stream)
+    stream = list(map(float, stream))
+    origin=np.array(stream[length-2:length])
+
     stream = stream[:215]
     length = len(stream)
     #print(stream)
-    #print(len(stream))
-    try:
-        stream = list(map(int, stream))
 
-        done = stream[0]
-        #print(stream[1])
-        reward = LongTensor([stream[1]])
-        board = np.array(stream[2:202])
-        board = board.reshape((20, 10)) #TODO: make sure it formats correctly
-        # board = np.flip(board, 0)
-        currPiece = np.array(stream[length-8:length])
-        i = 0
-        while i < len(currPiece):
-            y = currPiece[i] - 1
-            x = currPiece[i+1] - 1
-            if x < 10 and y < 20:
-                board[y, x] = 1
-            i += 2
 
-        # print(board)
-        board = np.expand_dims(board, axis=0)
-        board = torch.from_numpy(board)
-        board = board.unsqueeze(0).type(Tensor)
-        state = np.array(stream[2:len(stream)]) #TODO: make matrix/check dims
-        # print(state)
-        state = np.reshape(state, (1, 213))
-        state = torch.from_numpy(state)
-        #print("curr state type:")
-        #print(type(state))
-        return done, board, reward, True
-    except:
-        print("Error: Bad socket read")
-        return False, 0, 0, False
+
+    stream = list(map(int, stream))
+
+    done = stream[0]
+    reward = LongTensor([stream[1]])
+    board = np.array(stream[2:202])
+    board = board.reshape((20, 10)) #TODO: make sure it formats correctly
+    # board = np.flip(board, 0)
+    currPiece = np.array(stream[length-8:length])
+    i = 0
+    pieceArr = np.zeros((4,2))
+    while i < len(currPiece):
+        x = currPiece[i]
+        y = currPiece[i+1]
+        pieceArr[(int) (i/2),0] = x
+        pieceArr[(int) (i/2),1] = y
+        if x < 20 and y < 10:
+            board[x, y] = 2
+
+        i += 2
+    pieceArr.astype(int)
+
+
+    state = np.expand_dims(board, axis=0)
+    state = torch.from_numpy(board)
+
+    while i < len(pieceArr):
+
+        if pieceArr[i,0] < 20 and pieceArr[i,1] < 10:
+            board[pieceArr[i,0], pieceArr[i,1]] = 0
+
+    state = state.unsqueeze(0).type(Tensor)
+
+    return done, state, board, reward, pieceArr, origin, True
+
+    print("Error: Bad socket read")
+    return False, 0,0,0, 0,0, False
 
 def translateAction(n):
     if n == 0:
@@ -161,11 +198,11 @@ def translateAction(n):
     elif n == 2:
         return "up"
     elif n == 3:
-        return "down"
+        return "space"
     elif n == 4:
         return "z"
     elif n == 5:
-        return "space"
+        return "down"
     elif n == 6:
         return "shift"
 
@@ -191,34 +228,40 @@ def train(num_episodes):
         # #
         print("Episode: " + str(i+1) + " ", end = "")
         featureString=receiveNextFeatureString()
-        done, state, reward, didRecieve = parseStream(featureString)
+        done, state, board, reward, piece, origin, didReceive = parseStream(featureString)
 
         last = torch.zeros((1, 20, 10)).long().unsqueeze(0).type(Tensor)
         curr = torch.zeros((1, 20, 10)).long().unsqueeze(0).type(Tensor)
         curr_state =  curr - last
         curr_state = curr_state.long()
         while not done:
-            action = select_action(curr_state)[0][0]
-            actionText = translateAction(action)
+            action = select_action(curr_state,board,piece,origin)
+            actionText = translateAction(action[0][0])
             sendText(actionText)
             #TODO: map outputs to strings, to socket
             last = curr
             featureString = receiveNextFeatureString()
-            done, curr, reward, didRecieve = parseStream(featureString)
-            if didRecieve:
+            done, state, board, reward, piece, origin, didReceive = parseStream(featureString)
+
+            if didReceive:
+                penalty=0
+                gameOverPenalty=200
                 if not done:
                     next_state = curr - last
                     next_state = next_state.float()
                 else:
                     next_state = None
-                curr_state=curr_state.long()
+                    penalty+=gameOverPenalty
 
-                action=Tensor([action]).long()
-                #print(action.size())
-                if done:
-                    memory.push(curr_state.float(), action, next_state, LongTensor([-500]))
-                else:
-                    memory.push(curr_state.float(), action, next_state, reward.float())
+                curr_state=curr_state.long()
+                if action[0][0] !=3 :
+                    penalty +=4
+                penalty=LongTensor([penalty])
+                reward-=penalty
+                action=action.long()
+
+                memory.push(curr_state.float(), action, next_state, reward.float())
+
 
                 curr_state = next_state
                 optimize_model()
@@ -226,7 +269,7 @@ def train(num_episodes):
             if done:
                 episode_durations.append(reward)
                 sendText("reset")
-                print("Score: "+ str(reward[0]))
+                print("Score: "+ str(reward[0]+gameOverPenalty))
                 break
 
 
@@ -236,8 +279,235 @@ def train(num_episodes):
     plt.show()
     sendText("end")
 
+
+c1=-0.510066
+c2=0.760666
+c3=-0.35663
+c4=-0.184483
+def generateMoveQueue(bestCol,maxRot,pieceLeftCol):
+    moveQueue = Queue()
+    print("columns!!!!!",bestCol,maxRot,pieceLeftCol)
+    if maxRot==3:
+        moveQueue.enqueue(4) #z
+    else:
+        for _ in range(maxRot):
+            moveQueue.enqueue(2) #up
+
+    for _ in range(pieceLeftCol-bestCol):
+        moveQueue.enqueue(0)
+
+    for _ in range(bestCol-pieceLeftCol):
+        moveQueue.enqueue(1)
+    moveQueue.enqueue(3)
+    return moveQueue
+
+def determineOptimalMove(board, piece,origin):
+
+    maxScore = -999
+    bestCol = 0
+    maxRot = 0
+    maxLeftCol=0
+    nonRegularizedPiece=np.copy(piece)
+    nonRegularizedOrigin=np.copy(origin)
+    print("NEW PIECE @@@@@@@@@@@@@@@@@@@@@")
+    for i in range(4):
+
+        piece,origin,pieceLeftCol=regularizePiece(np.copy(nonRegularizedPiece),np.copy(nonRegularizedOrigin))
+        #print(piece)
+        score,loc = determineOptimalColumn(board,piece)
+        print("ROTATED")
+        nonRegularizedPiece =rotate(nonRegularizedPiece,nonRegularizedOrigin)
+        #print("score and loc: " ,score,loc)
+
+        if score > maxScore:
+            maxScore = score
+            bestCol=loc
+            maxRot = i
+            maxLeftCol=pieceLeftCol
+        #print("best col, max rot, leftCol", bestCol,maxRot,pieceLeftCol)
+    return generateMoveQueue(bestCol,maxRot,maxLeftCol)
+
+#checked
+def rotate(piece,origin):
+    #print(origin,origin[0],origin[1])
+    for i in range(piece.shape[0]):
+        x = piece[i,0];
+        y = piece[i,1];
+        x -= origin[0]
+        y -= origin[1]
+        temp = x;
+        x = -1 * y;
+        y = temp;
+        x += origin[0];
+        y += origin[1];
+        piece[i,0]=x
+        piece[i,1]=y
+
+
+        #print("rotated", x,y)
+    return piece
+
+def regularizePiece(piece,origin):
+    xDiff=999
+    yDiff=999
+    for i in range(piece.shape[0]):
+        xDiff=min(xDiff,piece[i,0])
+        yDiff=min(yDiff,piece[i,1])
+    origin[0]-=xDiff
+    origin[1]-=yDiff
+    #print("piece locs:")
+    for i in range(piece.shape[0]):
+        piece[i,0]-=xDiff
+        piece[i,1]-=yDiff
+
+    return piece.astype(int),origin,yDiff.astype(int)
+
+def determineOptimalColumn(board,piece):
+    maxScore = -999.0
+    maxLoc = 0
+
+    for column in range(10):
+        score = determineScoreInColumn(board,piece,column)
+
+        if score > maxScore:
+            maxScore = score
+            maxLoc = column
+    return maxScore,maxLoc
+
+
+def determineScoreInColumn(board,piece,column):
+    row = determineRowWithinColumn(board,piece,column)
+    #print("row",row)
+    return calculateScore(board,piece,row,column)
+
+def determineRowWithinColumn(board,piece,column):
+    #print(board)
+    #print("column",column)
+    for row in range(20):
+        for j in range(piece.shape[0]):
+
+            if 19-row+piece[j,0]>19:
+                #print("broken",j)
+                break
+            elif column+piece[j,1]>9 :
+                #print("returned 0")
+                return 0
+            elif board[19-row+piece[j,0],column+piece[j,1]]==1:
+                #print(19-row+piece[j,0],column+piece[j,1])
+                return (19-row)+1
+    #print("returned 0")
+    return 0
+
+
+
+def calculateScore(board,piece,row,column):
+    tempBoard,valid=addToBoard(np.copy(board),piece,row,column)
+    score = -999
+    if valid:
+        #print(valid)
+        #print(tempBoard)
+        score=0
+        lines =linesCleared(tempBoard)
+        height = (aggHeight(tempBoard)-lines)
+        holes = numHoles(tempBoard)
+        bump=bumpiness(tempBoard)
+
+        score += height*c1+holes*c3+lines*c2+bump*c4
+        print(row,column,lines,height,holes,bump,"%.2f" % score)
+
+    return score
+
+def addToBoard(board,piece,row,column):
+    #print(board)
+    for i in range(piece.shape[0]):
+
+
+        if piece[i,0]+row<20 and piece[i,1]+column<10 and (not board[piece[i,0]+row,piece[i,1]+column]==1):
+            board[piece[i,0]+row,piece[i,1]+column]=1
+
+        else:
+            return board,False
+    #print(board)
+    return board,True
+
+#checked
+def aggHeight(board):
+    topRow = getTopRow(board)
+    #
+    maxHeight =0
+    for i in range(10):
+        if topRow[i]>maxHeight:
+            maxHeight=topRow[i]
+    maxHeight+=1
+    #print("maxHeight",maxHeight)
+    return maxHeight
+
+#checked sorta
+def numHoles(board):
+    count = 0
+    #print(board)
+    for col in range(10):
+        colContainsBlock=False
+        for row in range(20):
+            if board[19-row,col]==1:
+                colContainsBlock=True
+            elif colContainsBlock:
+                count +=1
+    #print("holes",count)
+    return count
+
+#pseudo/sudo checked @alex chan
+def linesCleared(board):
+    lines=0
+    for row  in range(20):
+        prod = 1
+        totalSum = 0
+        for col in range(10):
+            prod *=board[row,col]
+            totalSum+=board[row,col]
+        if prod != 0:
+            lines +=1
+
+        elif totalSum==0:
+            #print(row)
+            return lines
+    #print("lines: ",lines)
+    return lines
+
+def bumpiness(board):
+    #print(board)
+
+    boardRow = getTopRow(board)
+    #print(boardRow)
+    totalSum=0
+    for i in range(10-1):
+        totalSum+=abs(boardRow[i]-boardRow[i+1])
+    #print("bumpiness",totalSum)
+    return totalSum
+
+#checked
+def getTopRow(board):
+    topRow = []
+    #print(board)
+    for col  in range(10):
+        flag = False
+        for row in range(20):
+            if board[19-row,col]==1:
+                topRow.append(19-row)
+                flag = True
+                break
+        if not flag:
+            topRow.append(-1)
+
+    #print(topRow)
+    return topRow
+
+
 if __name__ == "__main__":
     train(200)
+
+
+
 
 
 
