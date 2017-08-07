@@ -69,6 +69,7 @@ def select_action(state,board, piece,origin):
     if sample<1:
 
         moveQueue= determineOptimalMove(board,piece,origin)
+        time.sleep(1)
         #s=input("enter when ready")
         return LongTensor([[moveQueue.dequeue()]])
     eps_threshold = max(EPS_END,EPS_END + (EPS_START - EPS_END)*(1-steps_done/(DECAY_RATE*MAX_STEPS)))
@@ -436,8 +437,8 @@ def aggHeight(board):
     #
     maxHeight =0
     for i in range(10):
-        if topRow[i]>maxHeight:
-            maxHeight=topRow[i]
+        if topRow[i]!=-1:
+            maxHeight+=topRow[i]
     maxHeight+=1
     #print("maxHeight",maxHeight)
     return maxHeight
