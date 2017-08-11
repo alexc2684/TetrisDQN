@@ -37,14 +37,15 @@ EPS_END = 0.05
 MAX_STEPS= 10000
 steps_done = 0
 DECAY_RATE = 2
+newPiece=True
 model = DQN()
 
 optimizer = optim.RMSprop(model.parameters())
 memory = ReplayMemory(10000)
 moveQueue= Queue()
 
-def select_action(state,board, piece,origin):
-    global steps_done,moveQueue
+def select_action(state,board, piece,origin,newEpisode):
+    global steps_done,moveQueue,newPiece
     steps_done += 1
     if not moveQueue.isEmpty():
         #time.sleep(0.1)
@@ -66,19 +67,23 @@ def select_action(state,board, piece,origin):
         return LongTensor([[action]])
 
     sample=random.random()
-    if sample<1:
+    eps_threshold = max(EPS_END,EPS_END + (EPS_START - EPS_END)*(1-steps_done/(DECAY_RATE*MAX_STEPS)))
+    if newEpisode:
+        print(eps_threshold)
+    if newPiece and sample<eps_threshold:
 
         moveQueue= determineOptimalMove(board,piece,origin)
-        time.sleep(1)
+        time.sleep(0.5)
         #s=input("enter when ready")
         return LongTensor([[moveQueue.dequeue()]])
-    eps_threshold = max(EPS_END,EPS_END + (EPS_START - EPS_END)*(1-steps_done/(DECAY_RATE*MAX_STEPS)))
-
+    newPiece = False
+    sample=random.random()
     if sample > eps_threshold:
+
         return model(
             Variable(state, volatile=True).type(FloatTensor)).data.max(1)[1].view(1, 1)
     else:
-        return LongTensor([[random.randrange(5)]])
+        return LongTensor([[random.randrange(7)]])
 
 episode_durations = []
 
@@ -208,6 +213,7 @@ def translateAction(n):
         return "shift"
 
 
+
 def sendText(text):
     text=text + '\n'
     bytesTest=text.encode('utf-8')
@@ -222,12 +228,16 @@ def receiveNextFeatureString():
     return featureString
 
 def train(num_episodes):
+    global newPiece
     client_socket.connect(("", 5000))
     #featureString = client_socket.recv(2048).decode('utf-8')
     featureString = ""
+    counter = 0
     for i in range(num_episodes):
         # #
         print("Episode: " + str(i+1) + " ", end = "")
+        print(u'ε',end=" ")
+
         featureString=receiveNextFeatureString()
         done, state, board, reward, piece, origin, didReceive = parseStream(featureString)
 
@@ -235,8 +245,12 @@ def train(num_episodes):
         curr = torch.zeros((1, 20, 10)).long().unsqueeze(0).type(Tensor)
         curr_state =  curr - last
         curr_state = curr_state.long()
+        newEpisode = True
         while not done:
-            action = select_action(curr_state,board,piece,origin)
+            counter +=1
+            newPiece = True
+            action = select_action(curr_state,board,piece,origin,newEpisode)
+            newEpisode = False
             actionText = translateAction(action[0][0])
             sendText(actionText)
             #TODO: map outputs to strings, to socket
@@ -287,7 +301,7 @@ c3=-0.35663
 c4=-0.184483
 def generateMoveQueue(bestCol,maxRot,pieceLeftCol):
     moveQueue = Queue()
-    print("columns!!!!!",bestCol,maxRot,pieceLeftCol)
+    #print("columns!!!!!",bestCol,maxRot,pieceLeftCol)
     if maxRot==3:
         moveQueue.enqueue(4) #z
     else:
@@ -310,13 +324,12 @@ def determineOptimalMove(board, piece,origin):
     maxLeftCol=0
     nonRegularizedPiece=np.copy(piece)
     nonRegularizedOrigin=np.copy(origin)
-    print("NEW PIECE @@@@@@@@@@@@@@@@@@@@@")
     for i in range(4):
 
         piece,origin,pieceLeftCol=regularizePiece(np.copy(nonRegularizedPiece),np.copy(nonRegularizedOrigin))
         #print(piece)
         score,loc = determineOptimalColumn(board,piece)
-        print("ROTATED")
+        #print("ROTATED")
         nonRegularizedPiece =rotate(nonRegularizedPiece,nonRegularizedOrigin)
         #print("score and loc: " ,score,loc)
 
@@ -382,21 +395,15 @@ def determineScoreInColumn(board,piece,column):
     return calculateScore(board,piece,row,column)
 
 def determineRowWithinColumn(board,piece,column):
-    #print(board)
-    #print("column",column)
     for row in range(20):
         for j in range(piece.shape[0]):
 
             if 19-row+piece[j,0]>19:
-                #print("broken",j)
                 break
             elif column+piece[j,1]>9 :
-                #print("returned 0")
                 return 0
             elif board[19-row+piece[j,0],column+piece[j,1]]==1:
-                #print(19-row+piece[j,0],column+piece[j,1])
                 return (19-row)+1
-    #print("returned 0")
     return 0
 
 
@@ -405,8 +412,6 @@ def calculateScore(board,piece,row,column):
     tempBoard,valid=addToBoard(np.copy(board),piece,row,column)
     score = -999
     if valid:
-        #print(valid)
-        #print(tempBoard)
         score=0
         lines =linesCleared(tempBoard)
         height = (aggHeight(tempBoard)-lines)
@@ -414,7 +419,7 @@ def calculateScore(board,piece,row,column):
         bump=bumpiness(tempBoard)
 
         score += height*c1+holes*c3+lines*c2+bump*c4
-        print(row,column,lines,height,holes,bump,"%.2f" % score)
+        #print(row,column,lines,height,holes,bump,"%.2f" % score)
 
     return score
 
@@ -434,19 +439,17 @@ def addToBoard(board,piece,row,column):
 #checked
 def aggHeight(board):
     topRow = getTopRow(board)
-    #
+
     maxHeight =0
     for i in range(10):
         if topRow[i]!=-1:
             maxHeight+=topRow[i]
     maxHeight+=1
-    #print("maxHeight",maxHeight)
     return maxHeight
 
 #checked sorta
 def numHoles(board):
     count = 0
-    #print(board)
     for col in range(10):
         colContainsBlock=False
         for row in range(20):
@@ -454,7 +457,6 @@ def numHoles(board):
                 colContainsBlock=True
             elif colContainsBlock:
                 count +=1
-    #print("holes",count)
     return count
 
 #pseudo/sudo checked @alex chan
@@ -470,26 +472,19 @@ def linesCleared(board):
             lines +=1
 
         elif totalSum==0:
-            #print(row)
             return lines
-    #print("lines: ",lines)
     return lines
 
 def bumpiness(board):
-    #print(board)
-
     boardRow = getTopRow(board)
-    #print(boardRow)
     totalSum=0
     for i in range(10-1):
         totalSum+=abs(boardRow[i]-boardRow[i+1])
-    #print("bumpiness",totalSum)
     return totalSum
 
 #checked
 def getTopRow(board):
     topRow = []
-    #print(board)
     for col  in range(10):
         flag = False
         for row in range(20):
@@ -499,8 +494,6 @@ def getTopRow(board):
                 break
         if not flag:
             topRow.append(-1)
-
-    #print(topRow)
     return topRow
 
 

@@ -10,7 +10,7 @@ class DQN(nn.Module):
         self.fc1 = nn.Linear(2736, 2000)
         self.fc2 = nn.Linear(2000, 1000)
         self.fc3 = nn.Linear(1000, 200)
-        self.fc4 = nn.Linear(200, 5)
+        self.fc4 = nn.Linear(200, 7)
 
     def forward(self, x):
         x = F.relu(self.bn1(self.conv1(x)))
