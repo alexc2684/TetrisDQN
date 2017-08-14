@@ -32,12 +32,12 @@ Transition = namedtuple('Transition', ('state', 'action', 'next_state', 'reward'
 
 BATCH_SIZE = 150
 GAMMA = 0.999
-EPS_START = 0.95
+EPS_START = 1
 EPS_END = 0.05
-#EPS_DECAY = 100
+
 MAX_STEPS= 10000
 steps_done = 0
-DECAY_RATE = 2
+DECAY_RATE = 5
 newPiece=True
 useHeuristic=True
 newModel=True
@@ -57,33 +57,16 @@ def select_action(state,board, piece,origin):
 
     if not moveQueue.isEmpty():
         return LongTensor([[moveQueue.dequeue()]])
-    if steps_done<0:
-        s= input("Input move: ")
-        action = 0
-        if s=="a":
-             action=0
-        elif s=="d":
-             action=1
-        elif s=="w":
-             action=2
-        elif s==" ":
-             action=3
-        elif s=="z":
-             action=4
 
-        return LongTensor([[action]])
-
-    sample=random.random()
+    sample = random.random()
     eps_threshold = getEpsilonThreshold()
 
     if useHeuristic and newPiece and sample<eps_threshold:
-
-
         heuristic = HeuristicModel(board,piece,origin)
         moveQueue= heuristic.determineOptimalMove()
         return LongTensor([[moveQueue.dequeue()]])
     newPiece = False
-    sample=random.random()
+    sample = random.random()
     if sample > eps_threshold:
 
         return model(
@@ -271,8 +254,8 @@ def train(num_episodes):
             done, state, board, reward, piece, origin, didReceive = parseStream(featureString)
 
             if didReceive:
-                penalty=0
-                gameOverPenalty=200
+                penalty = 0
+                gameOverPenalty = 200
                 if not done:
                     next_state = curr - last
                     next_state = next_state.float()
@@ -281,11 +264,11 @@ def train(num_episodes):
                     penalty+=gameOverPenalty
 
                 curr_state=curr_state.long()
-                if action[0][0] !=3 :
-                    penalty +=2
-                penalty=LongTensor([penalty])
-                reward-=penalty
-                action=action.long()
+                if action[0][0] != 3 :
+                    penalty += 2
+                penalty = LongTensor([penalty])
+                reward -= penalty
+                action = action.long()
 
                 memory.push(curr_state.float(), action, next_state, reward.float())
 
@@ -297,7 +280,7 @@ def train(num_episodes):
             if done:
                 episode_durations.append(reward)
                 sendText("reset")
-                print("Score: "+ str(reward[0]+gameOverPenalty))
+                print("Score: " + str(reward[0]+gameOverPenalty))
                 break
 
 
