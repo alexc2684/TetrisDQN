@@ -1,4 +1,3 @@
-import gym
 import math
 import random
 import numpy as np
@@ -36,7 +35,7 @@ EPS_END = 0.05
 #EPS_DECAY = 100
 MAX_STEPS= 10000
 steps_done = 0
-DECAY_RATE = 2
+DECAY_RATE = 4
 newPiece=True
 model = DQN()
 
@@ -79,7 +78,7 @@ def select_action(state,board, piece,origin,newEpisode):
     newPiece = False
     sample=random.random()
     if sample > eps_threshold:
-
+        print("DQN Decision - Epsilon value: ", eps_threshold)
         return model(
             Variable(state, volatile=True).type(FloatTensor)).data.max(1)[1].view(1, 1)
     else:
