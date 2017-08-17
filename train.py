@@ -39,8 +39,8 @@ steps_done = 0
 HEURISTIC_DECAY_RATE = 4
 MODEL_DECAY_RATE = 2
 newPiece=True
-useHeuristic=True
-newModel=True
+useHeuristic=False
+newModel=False
 model = DQN()
 
 optimizer = optim.RMSprop(model.parameters())
@@ -60,8 +60,8 @@ def select_action(state,board, piece,origin,episodeNumber):
 
     sample = random.random()
     eps_threshold = getEpsilonThreshold(HEURISTIC_DECAY_RATE)
-    #if useHeuristic and episodeNumber<10:
-    if useHeuristic and newPiece and sample<eps_threshold:
+    if useHeuristic and episodeNumber<50:
+    #if useHeuristic and newPiece and sample<eps_threshold:
         heuristic = HeuristicModel(board,piece,origin)
         moveQueue= heuristic.determineOptimalMove()
         return LongTensor([[moveQueue.dequeue()]])
@@ -69,7 +69,7 @@ def select_action(state,board, piece,origin,episodeNumber):
     newPiece = False
     sample = random.random()
     eps_threshold = getEpsilonThreshold(MODEL_DECAY_RATE)
-    if sample > eps_threshold:
+    if sample >0:#> eps_threshold:
         #print("DQN Decision - Epsilon value: ", eps_threshold)
         return model(
             Variable(state, volatile=True).type(FloatTensor)).data.max(1)[1].view(1, 1)
@@ -160,25 +160,22 @@ def parseStream(stream):
     currPiece = np.array(stream[length-8:length])
     i = 0
     pieceArr = np.zeros((4,2))
+    board2=np.copy(board)
     while i < len(currPiece):
         x = currPiece[i]
         y = currPiece[i+1]
         pieceArr[(int) (i/2),0] = x
         pieceArr[(int) (i/2),1] = y
         if x < 20 and y < 10:
-            board[x, y] = 1
+            board2[x, y] = 1
 
         i += 2
     pieceArr.astype(int)
 
 
-    state = np.expand_dims(board, axis=0)
-    state = torch.from_numpy(board)
+    state = np.expand_dims(board2, axis=0)
+    state = torch.from_numpy(board2)
 
-    while i < len(pieceArr):
-
-        if pieceArr[i,0] < 20 and pieceArr[i,1] < 10:
-            board[pieceArr[i,0], pieceArr[i,1]] = 0
 
     state = state.unsqueeze(0).type(Tensor)
 
@@ -226,7 +223,7 @@ def train(num_episodes):
     #featureString = client_socket.recv(2048).decode('utf-8')
     featureString = ""
     if not newModel:
-        model = torch.load_state_dict(torch.load('trainedModel.pkl'))
+        model.load_state_dict(torch.load('trainedModel.pkl'))
     counter = 0
     for i in range(num_episodes):
         # #
@@ -238,6 +235,8 @@ def train(num_episodes):
         print(round(eps_threshold*1000)/1000,end = "   \t")
         if i>=0:
             torch.save(model.state_dict(),'model.pkl')
+        if i==47:
+            torch.save(model.state_dict(),'heuristic.pkl')
         featureString=receiveNextFeatureString()
         done, state, board, reward, piece, origin, didReceive = parseStream(featureString)
 
