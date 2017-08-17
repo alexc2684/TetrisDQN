@@ -117,7 +117,7 @@ class HeuristicModel():
         if valid:
             score=0
             lines =self.linesCleared(tempBoard)
-            height = (self.aggHeight(tempBoard)-lines)
+            height = self.aggHeight(tempBoard)
             holes = self.numHoles(tempBoard)
             bump=self.bumpiness(tempBoard)
 
@@ -170,6 +170,7 @@ class HeuristicModel():
             for col in range(10):
                 prod *=board[row,col]
                 totalSum+=board[row,col]
+
             if prod != 0:
                 lines +=1
 
