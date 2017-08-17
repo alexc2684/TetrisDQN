@@ -37,7 +37,7 @@ EPS_END = 0.05
 MAX_STEPS= 10000
 steps_done = 0
 HEURISTIC_DECAY_RATE = 4
-MODEL_DECAY_RATE = 2
+MODEL_DECAY_RATE = .2
 newPiece=True
 useHeuristic=False
 newModel=False
@@ -69,8 +69,14 @@ def select_action(state,board, piece,origin,episodeNumber):
     newPiece = False
     sample = random.random()
     eps_threshold = getEpsilonThreshold(MODEL_DECAY_RATE)
+<<<<<<< HEAD
     if sample >0:#> eps_threshold:
         #print("DQN Decision - Epsilon value: ", eps_threshold)
+=======
+    print(eps_threshold)
+    if sample > eps_threshold:
+        # print("DQN Decision - Epsilon value: ", eps_threshold)
+>>>>>>> 54d6dbf0f9a4835b2a8a47d79473eb87fc60ce22
         return model(
             Variable(state, volatile=True).type(FloatTensor)).data.max(1)[1].view(1, 1)
     else:
