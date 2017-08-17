@@ -36,7 +36,8 @@ EPS_END = 0.05
 
 MAX_STEPS= 10000
 steps_done = 0
-DECAY_RATE = 4
+HEURISTIC_DECAY_RATE = 4
+MODEL_DECAY_RATE = 2
 newPiece=True
 useHeuristic=True
 newModel=True
@@ -46,11 +47,11 @@ optimizer = optim.RMSprop(model.parameters())
 memory = ReplayMemory(10000)
 moveQueue= Queue()
 
-def getEpsilonThreshold():
-    global steps_done,EPS_END,EPS_START,DECAY_RATE,MAX_STEPS
-    return max(EPS_END,EPS_END + (EPS_START - EPS_END)*(1-steps_done/(DECAY_RATE*MAX_STEPS)))
+def getEpsilonThreshold(decay):
+    global steps_done,EPS_END,EPS_START,MAX_STEPS
+    return max(EPS_END,EPS_END + (EPS_START - EPS_END)*(1-steps_done/(decay*MAX_STEPS)))
 
-def select_action(state,board, piece,origin):
+def select_action(state,board, piece,origin,episodeNumber):
     global steps_done,moveQueue,newPiece,useHeuristic
     steps_done += 1
 
@@ -58,16 +59,18 @@ def select_action(state,board, piece,origin):
         return LongTensor([[moveQueue.dequeue()]])
 
     sample = random.random()
-    eps_threshold = getEpsilonThreshold()
-
+    eps_threshold = getEpsilonThreshold(HEURISTIC_DECAY_RATE)
+    #if useHeuristic and episodeNumber<10:
     if useHeuristic and newPiece and sample<eps_threshold:
         heuristic = HeuristicModel(board,piece,origin)
         moveQueue= heuristic.determineOptimalMove()
         return LongTensor([[moveQueue.dequeue()]])
+
     newPiece = False
     sample = random.random()
+    eps_threshold = getEpsilonThreshold(MODEL_DECAY_RATE)
     if sample > eps_threshold:
-        print("DQN Decision - Epsilon value: ", eps_threshold)
+        #print("DQN Decision - Epsilon value: ", eps_threshold)
         return model(
             Variable(state, volatile=True).type(FloatTensor)).data.max(1)[1].view(1, 1)
     else:
@@ -163,7 +166,7 @@ def parseStream(stream):
         pieceArr[(int) (i/2),0] = x
         pieceArr[(int) (i/2),1] = y
         if x < 20 and y < 10:
-            board[x, y] = 2
+            board[x, y] = 1
 
         i += 2
     pieceArr.astype(int)
@@ -218,20 +221,22 @@ def receiveNextFeatureString():
     return featureString
 
 def train(num_episodes):
-    global newPiece, model,newModel
+    global newPiece, model,newModel,HEURISTIC_DECAY_RATE,MODEL_DECAY_RATE
     client_socket.connect(("", 5000))
     #featureString = client_socket.recv(2048).decode('utf-8')
     featureString = ""
     if not newModel:
-        model = torch.load('model.pkl')
+        model = torch.load_state_dict(torch.load('trainedModel.pkl'))
     counter = 0
     for i in range(num_episodes):
         # #
         print("Episode: " + str(i+1) + " ", end = "\t")
         print(u'ε',end=" ")
-        eps_threshold=getEpsilonThreshold()
-        print(round(eps_threshold*1000)/1000,end = "  \t")
-        if i % 10 ==0 and i>=0:
+        eps_threshold=getEpsilonThreshold(HEURISTIC_DECAY_RATE)
+        print(round(eps_threshold*1000)/1000,end = "   \t")
+        eps_threshold=getEpsilonThreshold(MODEL_DECAY_RATE)
+        print(round(eps_threshold*1000)/1000,end = "   \t")
+        if i>=0:
             torch.save(model.state_dict(),'model.pkl')
         featureString=receiveNextFeatureString()
         done, state, board, reward, piece, origin, didReceive = parseStream(featureString)
@@ -244,7 +249,7 @@ def train(num_episodes):
         while not done:
             counter +=1
 
-            action = select_action(curr_state,board,piece,origin)
+            action = select_action(curr_state,board,piece,origin,i)
             actionText = translateAction(action[0][0])
             sendText(actionText)
             #TODO: map outputs to strings, to socket
@@ -254,7 +259,7 @@ def train(num_episodes):
 
             if didReceive:
                 penalty = 0
-                gameOverPenalty = 200
+                gameOverPenalty = 1000
                 if not done:
                     next_state = curr - last
                     next_state = next_state.float()
