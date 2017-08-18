@@ -2,8 +2,8 @@ import numpy as np
 from queue import Queue
 c1=-0.510066
 c2=0.760666
-c3=-0.35663
-c4=-0.184483
+c3=-.4#-0.35663 #holes
+c4=-0.184483 #bumpiness
 class HeuristicModel():
 
     def __init__(self, board,piece,origin):
@@ -42,7 +42,8 @@ class HeuristicModel():
             piece,origin,pieceLeftCol=self.regularizePiece(np.copy(nonRegularizedPiece),np.copy(nonRegularizedOrigin))
             score,loc = self.determineOptimalColumn(board,piece)
             nonRegularizedPiece =self.rotate(nonRegularizedPiece,nonRegularizedOrigin)
-            if score > maxScore:
+            #print("rotated")
+            if score >= maxScore:
                 maxScore = score
                 bestCol=loc
                 maxRot = i
@@ -85,7 +86,7 @@ class HeuristicModel():
 
         for column in range(10):
             score = self.determineScoreInColumn(board,piece,column)
-
+            #print(column,score)
             if score > maxScore:
                 maxScore = score
                 maxLoc = column

@@ -34,13 +34,14 @@ GAMMA = 0.999
 EPS_START = 1
 EPS_END = 0.05
 
-MAX_STEPS= 10000
+MAX_STEPS = 10000
 steps_done = 0
 HEURISTIC_DECAY_RATE = 4
-MODEL_DECAY_RATE = .2
-newPiece=True
-useHeuristic=True
-newModel=True
+MODEL_DECAY_RATE = .8
+newPiece = True
+useHeuristic = False
+newModel = False
+testModel = True
 model = DQN()
 
 optimizer = optim.RMSprop(model.parameters())
@@ -53,14 +54,14 @@ def getEpsilonThreshold(decay):
 
 def select_action(state,board, piece,origin,episodeNumber):
     global steps_done,moveQueue,newPiece,useHeuristic
-    steps_done += 1
 
+    steps_done += 1
     if not moveQueue.isEmpty():
         return LongTensor([[moveQueue.dequeue()]])
 
     sample = random.random()
     eps_threshold = getEpsilonThreshold(HEURISTIC_DECAY_RATE)
-    if useHeuristic and episodeNumber<50:
+    if useHeuristic and episodeNumber<20:
     #if useHeuristic and newPiece and sample<eps_threshold:
         heuristic = HeuristicModel(board,piece,origin)
         moveQueue= heuristic.determineOptimalMove()
@@ -69,8 +70,8 @@ def select_action(state,board, piece,origin,episodeNumber):
     newPiece = False
     sample = random.random()
     eps_threshold = getEpsilonThreshold(MODEL_DECAY_RATE)
-    print(eps_threshold)
-    if sample > eps_threshold:
+    #print(eps_threshold)
+    if sample > eps_threshold or testModel:
         # print("DQN Decision - Epsilon value: ", eps_threshold)
         return model(
             Variable(state, volatile=True).type(FloatTensor)).data.max(1)[1].view(1, 1)
@@ -150,40 +151,35 @@ def parseStream(stream):
     #print(stream)
 
 
+    try:
+        stream = list(map(int, stream))
 
-    stream = list(map(int, stream))
+        done = stream[0]
+        reward = LongTensor([stream[1]])
+        board = np.array(stream[2:202])
+        board = board.reshape((20, 10))
+        currPiece = np.array(stream[length-8:length])
+        i = 0
+        pieceArr = np.zeros((4,2))
+        board2=np.copy(board)
+        while i < len(currPiece):
+            x = currPiece[i]
+            y = currPiece[i+1]
+            pieceArr[(int) (i/2),0] = x
+            pieceArr[(int) (i/2),1] = y
+            if x < 20:
+                board2[x, y] = 1
+            i += 2
+        print(board2)
+        pieceArr.astype(int)
+        state = np.expand_dims(board2, axis=0)
+        state = torch.from_numpy(board2)
+        state = state.unsqueeze(0).type(Tensor)
 
-    done = stream[0]
-    reward = LongTensor([stream[1]])
-    board = np.array(stream[2:202])
-    board = board.reshape((20, 10)) #TODO: make sure it formats correctly
-    # board = np.flip(board, 0)
-    currPiece = np.array(stream[length-8:length])
-    i = 0
-    pieceArr = np.zeros((4,2))
-    board2=np.copy(board)
-    while i < len(currPiece):
-        x = currPiece[i]
-        y = currPiece[i+1]
-        pieceArr[(int) (i/2),0] = x
-        pieceArr[(int) (i/2),1] = y
-        if x < 20 and y < 10:
-            board2[x, y] = 1
-
-        i += 2
-    pieceArr.astype(int)
-
-
-    state = np.expand_dims(board2, axis=0)
-    state = torch.from_numpy(board2)
-
-
-    state = state.unsqueeze(0).type(Tensor)
-
-    return done, state, board, reward, pieceArr, origin, True
-
-    print("Error: Bad socket read")
-    return False, 0,0,0, 0,0, False
+        return done, state, board, reward, pieceArr, origin, True
+    except:
+        print("Error: Bad socket read")
+        return False,0,0,0,0,0,False
 
 def translateAction(n):
     global newPiece
@@ -236,7 +232,8 @@ def train(num_episodes):
         print(round(eps_threshold*1000)/1000,end = "   \t")
         if i>=0:
             torch.save(model.state_dict(),'model.pkl')
-
+        if i==19:
+            torch.save(model.state_dict(),'heuristic.pkl')
         featureString=receiveNextFeatureString()
         done, state, board, reward, piece, origin, didReceive = parseStream(featureString)
 
